@@ -6,12 +6,13 @@ Telegram: @papaya991
 ### Версии
 
 - Версия ядра: 6.14.6  
-  Скачать ядро
+  wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.14.6.tar.xz
 
 - BusyBox: 1.37.0 (с выключенным tc)  
-  Скачать BusyBox
+  wget https://busybox.net/downloads/busybox-1.37.0.tar.bz2
 
 ### Структура проекта
+```bash
 /boot
     config
     System.map
@@ -26,11 +27,16 @@ Telegram: @papaya991
     /sys
     /tmp
     init
+```
 ### Запуск
 
 Для запуска проекта используйте скрипт start.sh. Запускать скрипт необходимо из корня проекта.
 
 Пример запуска:
+```bash
 ./start.sh
+```
 Для запуска с флагами виртуализации выполните:
+```bash
 VIRTUALIZATION_FLAGS=true ./start.sh
+```
