@@ -3296,6 +3296,14 @@ static int proc_pid_ksm_stat(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif /* CONFIG_KSM */
 
+static int proc_pid_scheduled_amount(struct seq_file *m, struct pid_namespace *ns,
+				struct pid *pid, struct task_struct *task)
+{
+	int scheduled_amount = atomic_read(&task->scheduled_amount);
+	seq_printf(m, "%d\n", scheduled_amount);
+	return 0;
+}
+
 #ifdef CONFIG_STACKLEAK_METRICS
 static int proc_stack_depth(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
@@ -3431,6 +3439,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
 #endif
+	ONE("scheduled_amount", S_IRUSR, proc_pid_scheduled_amount),
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)

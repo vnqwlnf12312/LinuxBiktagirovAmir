@@ -101,6 +101,7 @@ struct task_struct init_task __aligned(L1_CACHE_BYTES) = {
 #ifdef CONFIG_CGROUP_SCHED
 	.sched_task_group = &root_task_group,
 #endif
+	.scheduled_amount = ATOMIC_INIT(0),
 #ifdef CONFIG_SCHED_CLASS_EXT
 	.scx		= {
 		.dsq_list.node	= LIST_HEAD_INIT(init_task.scx.dsq_list.node),

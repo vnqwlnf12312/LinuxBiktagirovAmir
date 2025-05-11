@@ -6847,6 +6847,7 @@ static __always_inline void __schedule_loop(int sched_mode)
 asmlinkage __visible void __sched schedule(void)
 {
 	struct task_struct *tsk = current;
+	atomic_inc(&tsk->scheduled_amount);
 
 #ifdef CONFIG_RT_MUTEXES
 	lockdep_assert(!tsk->sched_rt_mutex);
