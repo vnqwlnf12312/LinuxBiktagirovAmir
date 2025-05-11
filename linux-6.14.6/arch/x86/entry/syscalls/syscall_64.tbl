@@ -390,9 +390,6 @@
 464	common	getxattrat		sys_getxattrat
 465	common	listxattrat		sys_listxattrat
 466	common	removexattrat		sys_removexattrat
-467     common  get_user                sys_get_user
-468     common  add_user                sys_add_user
-469     common  del_user                sys_del_user
 #
 # Due to a historical design error, certain syscalls are numbered differently
 # in x32 as compared to native x86_64.  These syscalls have numbers 512-547.

@@ -1,0 +1,2 @@
+для запуска можно использовать 
+```qemu-system-x86_64 $FLAGS -kernel ./boot/vmlinuz-6.14.6 -initrd initramfs -nographic -append "console=ttyS0" -monitor telnet:127.0.0.1:55555,server,nowait```, потом можно будет подсоединиться к монитору через ```telnet localhost 55555```, и отправлять клавиши с помощью ```sendkey a```, просто так ничего считаться не будет(кажется консолька перехватывает нажатия)

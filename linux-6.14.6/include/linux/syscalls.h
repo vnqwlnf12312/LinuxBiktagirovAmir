@@ -1316,9 +1316,5 @@ int __sys_getsockopt(int fd, int level, int optname, char __user *optval,
 		int __user *optlen);
 int __sys_setsockopt(int fd, int level, int optname, char __user *optval,
 		int optlen);
-struct user_info;
-asmlinkage long sys_add_user(const struct user_info __user* user);
-asmlinkage long sys_del_user(const char __user* surname);
-asmlinkage long sys_get_user(const char __user* surname, struct user_info* __user user);
 
 #endif
