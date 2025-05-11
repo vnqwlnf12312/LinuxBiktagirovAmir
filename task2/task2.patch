@@ -1,0 +1,121 @@
+diff --git a/linux-6.14.6/Makefile b/linux-6.14.6/Makefile
+index 6c3233a..10d4f1a 100644
+--- a/linux-6.14.6/Makefile
++++ b/linux-6.14.6/Makefile
+@@ -779,7 +779,7 @@ endif
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+ # Objects we will link into vmlinux / subdirs we need to visit
+-core-y		:=
++core-y		:= klava_module/
+ drivers-y	:=
+ libs-y		:= lib/
+ endif # KBUILD_EXTMOD
+diff --git a/linux-6.14.6/klava_module/Makefile b/linux-6.14.6/klava_module/Makefile
+new file mode 100644
+index 0000000..ed82d21
+--- /dev/null
++++ b/linux-6.14.6/klava_module/Makefile
+@@ -0,0 +1,10 @@
++obj-m := klava_module.o
++
++klava_module-y := klava.o
++
++all:
++	make -C ../../root/lib/modules/6.14.6/build M=$(PWD) modules
++clean:
++	make -C ../../root/lib/modules/6.14.6/build M=$(PWD) clean
++install:
++	INSTALL_MOD_PATH=../../root/ make -C ../../root/lib/modules/6.14.6/build M=$(PWD) modules_install
+\ No newline at end of file
+diff --git a/linux-6.14.6/klava_module/klava.c b/linux-6.14.6/klava_module/klava.c
+new file mode 100644
+index 0000000..bcfa3f2
+--- /dev/null
++++ b/linux-6.14.6/klava_module/klava.c
+@@ -0,0 +1,57 @@
++#include "klava.h"
++
++#include <asm/io.h>
++#include <linux/timer.h>
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("AMIR");
++MODULE_DESCRIPTION("keyboard taps counter");
++MODULE_VERSION("0.01");
++
++#define IRQ_LINE 1
++#define PS2_KEYBOARD_DATA_PORT 0x60
++#define TIMER_COOLDOWN secs_to_jiffies(60)
++static atomic_t taps_amount = ATOMIC_INIT(0);
++static struct timer_list info_timer;
++
++irqreturn_t handler(int irq, void* dev) {
++  unsigned char scan_code = inb(PS2_KEYBOARD_DATA_PORT);
++
++  if (!(scan_code & 0x80)) {
++    atomic_inc(&taps_amount);
++  }
++
++  return IRQ_HANDLED;
++}
++
++static void info_callback(struct timer_list* obj) {
++  int amount = atomic_xchg(&taps_amount, 0);
++  mod_timer(&info_timer, jiffies + TIMER_COOLDOWN);
++  pr_info("YOU PRESSED %d buttons last minute\n", amount);
++}
++
++static int __init klava_init(void) {
++  pr_info("starting klava counter\n");
++
++  int res = request_irq(IRQ_LINE, handler, IRQF_SHARED, "taps counter", handler);
++  if (res < 0) {
++    pr_err("failed to request irq\n");
++    return res;
++  }
++
++  timer_setup(&info_timer, info_callback, 0);
++
++  mod_timer(&info_timer, jiffies + TIMER_COOLDOWN);
++
++  pr_info("started successfully\n");
++
++  return 0;
++}
++
++static void __exit klava_exit(void) {
++  free_irq(IRQ_LINE, handler);
++  del_timer_sync(&info_timer);
++}
++
++module_init(klava_init);
++module_exit(klava_exit);
+\ No newline at end of file
+diff --git a/linux-6.14.6/klava_module/klava.h b/linux-6.14.6/klava_module/klava.h
+new file mode 100644
+index 0000000..0782356
+--- /dev/null
++++ b/linux-6.14.6/klava_module/klava.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/fs.h>
++#include <linux/sprintf.h>
++#include <linux/string.h>
++#include <linux/interrupt.h>
++
++irqreturn_t handler(int irq, void* dev);
+\ No newline at end of file
+diff --git a/task2/README.md b/task2/README.md
+new file mode 100644
+index 0000000..b4c4724
+--- /dev/null
++++ b/task2/README.md
+@@ -0,0 +1,2 @@
++для запуска можно использовать 
++```qemu-system-x86_64 $FLAGS -kernel ./boot/vmlinuz-6.14.6 -initrd initramfs -nographic -append "console=ttyS0" -monitor telnet:127.0.0.1:55555,server,nowait```, потом можно будет подсоединиться к монитору через ```telnet localhost 55555```, и отправлять клавиши с помощью ```sendkey a```, просто так ничего считаться не будет(кажется консолька перехватывает нажатия)
+\ No newline at end of file
