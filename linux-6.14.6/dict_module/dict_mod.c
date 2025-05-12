@@ -147,8 +147,16 @@ int do_get(const char* args) {
 static ssize_t dict_write(struct file* f, const char __user* u, size_t count, loff_t* offset) {
     pr_info("starting to write\n");
 
+    char buf [INPUT_BUF_SIZE];
+    int res = copy_from_user(buf, u, count);
+    if (res) {
+        pr_err("failed to read input\n");
+        return -EFAULT;
+    }
+
     char command[COMMAND_BUF_SIZE];
-    int res = sscanf(u, "%s", command);
+    res = sscanf(buf, "%s", command);
+
     if (res < 0) {
         pr_err("failed to read input\n");
         return res;
