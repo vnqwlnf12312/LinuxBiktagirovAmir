@@ -162,10 +162,10 @@ index 0000000..4767bc9
 \ No newline at end of file
 diff --git a/linux-6.14.6/dict_module/dict.h b/linux-6.14.6/dict_module/dict.h
 new file mode 100644
-index 0000000..ce1d9ec
+index 0000000..641965a
 --- /dev/null
 +++ b/linux-6.14.6/dict_module/dict.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,42 @@
 +#pragma once
 +
 +#include <linux/hashtable.h>
@@ -177,6 +177,7 @@ index 0000000..ce1d9ec
 +#define SURNAME_BUF_SIZE 40
 +#define PHONE_BUF_SIZE 20
 +#define MAIL_BUF_SIZE 40
++#define INPUT_BUF_SIZE (COMMAND_BUF_SIZE + NAME_BUF_SIZE + SURNAME_BUF_SIZE + PHONE_BUF_SIZE + MAIL_BUF_SIZE + 10)
 +#define ANSWER_BUF_SIZE (NAME_BUF_SIZE+SURNAME_BUF_SIZE+10+PHONE_BUF_SIZE+MAIL_BUF_SIZE+8)
 +
 +extern DECLARE_HASHTABLE(users_map, MAX_USERS_LOG);
@@ -210,10 +211,10 @@ index 0000000..ce1d9ec
 \ No newline at end of file
 diff --git a/linux-6.14.6/dict_module/dict_mod.c b/linux-6.14.6/dict_module/dict_mod.c
 new file mode 100644
-index 0000000..944e0f6
+index 0000000..bd1c90f
 --- /dev/null
 +++ b/linux-6.14.6/dict_module/dict_mod.c
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,271 @@
 +#include "dict_mod.h"
 +
 +#include <linux/module.h>
@@ -363,8 +364,15 @@ index 0000000..944e0f6
 +static ssize_t dict_write(struct file* f, const char __user* u, size_t count, loff_t* offset) {
 +    pr_info("starting to write\n");
 +
++    char buf [INPUT_BUF_SIZE];
++    int res = copy_from_user(buf, u, count);
++    if (res) {
++        pr_err("failed to read input\n");
++        return -EFAULT;
++    }
++
 +    char command[COMMAND_BUF_SIZE];
-+    int res = sscanf(u, "%s", command);
++    res = sscanf(buf, "%s", command);
 +    if (res < 0) {
 +        pr_err("failed to read input\n");
 +        return res;

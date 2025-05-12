@@ -779,7 +779,8 @@ endif
 
 ifeq ($(KBUILD_EXTMOD),)
 # Objects we will link into vmlinux / subdirs we need to visit
-core-y		:= vma_module/
+
+core-y		:=
 drivers-y	:=
 libs-y		:= lib/
 endif # KBUILD_EXTMOD
