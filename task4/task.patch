@@ -1,3 +1,16 @@
+diff --git a/linux-6.14.6/Makefile b/linux-6.14.6/Makefile
+index 6c3233a..2c1c5e9 100644
+--- a/linux-6.14.6/Makefile
++++ b/linux-6.14.6/Makefile
+@@ -779,7 +779,7 @@ endif
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+ # Objects we will link into vmlinux / subdirs we need to visit
+-core-y		:=
++core-y		:= vma_module/
+ drivers-y	:=
+ libs-y		:= lib/
+ endif # KBUILD_EXTMOD
 diff --git a/linux-6.14.6/vma_module/Makefile b/linux-6.14.6/vma_module/Makefile
 new file mode 100644
 index 0000000..43486ab
