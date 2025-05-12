@@ -156,6 +156,7 @@ static ssize_t dict_write(struct file* f, const char __user* u, size_t count, lo
 
     char command[COMMAND_BUF_SIZE];
     res = sscanf(buf, "%s", command);
+
     if (res < 0) {
         pr_err("failed to read input\n");
         return res;
