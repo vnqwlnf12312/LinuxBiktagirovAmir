@@ -148,7 +148,6 @@ static ssize_t dict_write(struct file* f, const char __user* u, size_t count, lo
     pr_info("starting to write\n");
 
     char buf [INPUT_BUF_SIZE];
-    pr_info("u: %s, count: %d\n", u, count);
     int res = copy_from_user(buf, u, count);
     if (res) {
         pr_err("failed to read input\n");
