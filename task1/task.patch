@@ -1,0 +1,540 @@
+diff --git a/linux-6.14.6/Makefile b/linux-6.14.6/Makefile
+index 6c3233a..818fee7 100644
+--- a/linux-6.14.6/Makefile
++++ b/linux-6.14.6/Makefile
+@@ -779,7 +779,7 @@ endif
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+ # Objects we will link into vmlinux / subdirs we need to visit
+-core-y		:=
++core-y		:= dict_module/  
+ drivers-y	:=
+ libs-y		:= lib/
+ endif # KBUILD_EXTMOD
+diff --git a/linux-6.14.6/arch/x86/entry/syscalls/syscall_64.tbl b/linux-6.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+index 5eb708b..4972a0d 100644
+--- a/linux-6.14.6/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/linux-6.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -390,7 +390,9 @@
+ 464	common	getxattrat		sys_getxattrat
+ 465	common	listxattrat		sys_listxattrat
+ 466	common	removexattrat		sys_removexattrat
+-
++467     common  get_user                sys_get_user
++468     common  add_user                sys_add_user
++469     common  del_user                sys_del_user
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+ # in x32 as compared to native x86_64.  These syscalls have numbers 512-547.
+diff --git a/linux-6.14.6/dict_module/Makefile b/linux-6.14.6/dict_module/Makefile
+new file mode 100644
+index 0000000..622d463
+--- /dev/null
++++ b/linux-6.14.6/dict_module/Makefile
+@@ -0,0 +1,14 @@
++obj-m := dict_module.o
++
++dict_module-y := dict.o dict_mod.o
++
++obj-y := dict_sys.o
++
++dict_sys-y := dict.o dict_syscalls.o
++
++all:
++	make -C ../../root/lib/modules/6.14.6/build M=$(PWD) modules
++clean:
++	make -C ../../root/lib/modules/6.14.6/build M=$(PWD) clean
++install:
++	INSTALL_MOD_PATH=../../root/ make -C ../../root/lib/modules/6.14.6/build M=$(PWD) modules_install
+\ No newline at end of file
+diff --git a/linux-6.14.6/dict_module/dict.c b/linux-6.14.6/dict_module/dict.c
+new file mode 100644
+index 0000000..4767bc9
+--- /dev/null
++++ b/linux-6.14.6/dict_module/dict.c
+@@ -0,0 +1,106 @@
++#include "dict.h"
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/fs.h>
++#include <linux/sprintf.h>
++#include <linux/string.h>
++
++DEFINE_HASHTABLE(users_map, MAX_USERS_LOG);
++
++void free_user_info(struct user_info* user) {
++    kfree(user->name);
++    kfree(user->surname);
++    kfree(user->phone);
++    kfree(user->mail);
++}
++
++int free_user_info_if_bad_field(struct user_info* user) {
++    if (!user->name || !user->surname || !user->phone || !user->mail) {
++        free_user_info(user);
++        return 1;
++    }
++
++    return 0;
++}
++
++u32 calc_hash(const char* key) {
++    return jhash(key, strlen(key), 0);
++}
++
++struct user_info* copy_user_info(struct user_info* dst, const struct user_info* src) {
++    strcpy(dst->name, src->name);
++    strcpy(dst->surname, src->surname);
++    dst->age = src->age;
++    strcpy(dst->phone, src->phone);
++    strcpy(dst->mail, src->mail);
++
++    return dst;
++}
++
++int add_user_impl(const struct user_info* user) {
++    struct user_node* node = kmalloc(sizeof(struct user_node), GFP_KERNEL);
++    if (!node) {
++        pr_err("failed to allocate memory for user_info\n");
++        return -ENOMEM;
++    }
++
++    struct user_info* node_user = &node->user;
++    node_user->name = kmalloc(strlen(user->name), GFP_KERNEL);
++    node_user->surname = kmalloc(strlen(user->surname), GFP_KERNEL);
++    node_user->phone = kmalloc(strlen(user->phone), GFP_KERNEL);
++    node_user->mail = kmalloc(strlen(user->mail), GFP_KERNEL);
++    
++    int res = free_user_info_if_bad_field(node_user);
++    if (res == 1) {
++        return -ENOMEM;
++    }
++
++    copy_user_info(node_user, user);
++
++    hash_add(users_map, &node->node, calc_hash(user->surname));
++
++    return 0;
++}
++
++int del_user_impl(const char* surname) {
++    int deleted_count = 0;
++    struct user_node* found;
++    u32 key = calc_hash(surname);
++    hash_for_each_possible(users_map, found, node, key) {
++        if (strcmp(found->user.surname, surname) == 0) {
++            hash_del(&found->node);
++            free_user_info(&found->user);
++            kfree(found);
++            pr_info("deleted user\n");
++            ++deleted_count;
++        }
++    }
++
++    if (deleted_count == 0) {
++        pr_err("no such user\n");
++        return -1;
++    }
++
++    return 0;
++}
++
++int get_user_impl(const char* surname, struct user_info* user) {
++    int found_count = 0;
++    struct user_node* found;
++    u32 key = calc_hash(surname);
++    hash_for_each_possible(users_map, found, node, key) {
++        if (strcmp(found->user.surname, surname) == 0) {
++            ++found_count;
++            copy_user_info(user, &found->user);
++        }
++    }
++
++    if (found_count == 0) {
++        pr_err("no such user\n");
++        return -1;
++    }
++
++    return 0;
++}
+\ No newline at end of file
+diff --git a/linux-6.14.6/dict_module/dict.h b/linux-6.14.6/dict_module/dict.h
+new file mode 100644
+index 0000000..641965a
+--- /dev/null
++++ b/linux-6.14.6/dict_module/dict.h
+@@ -0,0 +1,42 @@
++#pragma once
++
++#include <linux/hashtable.h>
++#include <linux/jhash.h>
++
++#define MAX_USERS_LOG 10 // max users is 2**MAX_USERS_LOG
++#define COMMAND_BUF_SIZE 10
++#define NAME_BUF_SIZE 30
++#define SURNAME_BUF_SIZE 40
++#define PHONE_BUF_SIZE 20
++#define MAIL_BUF_SIZE 40
++#define INPUT_BUF_SIZE (COMMAND_BUF_SIZE + NAME_BUF_SIZE + SURNAME_BUF_SIZE + PHONE_BUF_SIZE + MAIL_BUF_SIZE + 10)
++#define ANSWER_BUF_SIZE (NAME_BUF_SIZE+SURNAME_BUF_SIZE+10+PHONE_BUF_SIZE+MAIL_BUF_SIZE+8)
++
++extern DECLARE_HASHTABLE(users_map, MAX_USERS_LOG);
++
++struct user_info {
++    char* name;
++    char* surname;
++    int age;
++    char* phone;
++    char* mail;
++};
++
++struct user_node {
++    struct user_info user;
++    struct hlist_node node;
++};
++
++u32 calc_hash(const char* key);
++
++void free_user_info(struct user_info* user);
++
++int free_user_info_if_bad_field(struct user_info* user);
++
++struct user_info* copy_user_info(struct user_info* dst, const struct user_info* src);
++
++int add_user_impl(const struct user_info* user);
++
++int del_user_impl(const char* surname);
++
++int get_user_impl(const char* surname, struct user_info* user);
+\ No newline at end of file
+diff --git a/linux-6.14.6/dict_module/dict_mod.c b/linux-6.14.6/dict_module/dict_mod.c
+new file mode 100644
+index 0000000..bd1c90f
+--- /dev/null
++++ b/linux-6.14.6/dict_module/dict_mod.c
+@@ -0,0 +1,271 @@
++#include "dict_mod.h"
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/cdev.h>
++#include <linux/device.h>
++#include <linux/kernel.h>
++#include <linux/fs.h>
++#include <linux/sprintf.h>
++#include <linux/string.h>
++
++#include "dict.h"
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("AMIR");
++MODULE_DESCRIPTION("dictionary containing user data");
++MODULE_VERSION("0.01");
++
++static int major;
++static struct class* dict_class = NULL;
++static struct cdev dict_data;
++static struct device* dict_device = NULL;
++static char answer[ANSWER_BUF_SIZE] = {'\0'};
++
++static ssize_t dict_read(struct file* f, char __user* u, size_t l, loff_t* o) {
++    size_t answer_len = strlen(answer);
++    if (*o > answer_len) {
++        return 0;
++    }
++    size_t read_len = min(l, answer_len - *o);
++    if (copy_to_user(u, answer + *o, read_len)) {
++        pr_err("failed to answer\n");
++        return -EFAULT;
++    }
++    *o += read_len;
++    return read_len;
++}
++
++int do_add(const char* args) {
++    pr_info("doing add\n");
++
++    char name[NAME_BUF_SIZE];
++    char surname[SURNAME_BUF_SIZE];
++    int age;
++    char phone[PHONE_BUF_SIZE];
++    char mail[MAIL_BUF_SIZE];
++
++    int res = sscanf(args, "%s %s %d %s %s", name, surname, &age, phone, mail);
++    if (res < 0) {
++        pr_err("failed to read input\n");
++        return res;
++    }
++    if (res != 5) {
++        pr_err("failed to match input, expected 5 arguments: name, surname, age, mail, phone. got %d \n", res);
++        return -1;
++    }
++
++    struct user_node* found;
++    u32 key = calc_hash(surname);
++    hash_for_each_possible(users_map, found, node, key) {
++        if (strcmp(found->user.surname, surname) == 0) {
++            pr_err("user already exists\n");
++            return -1;
++        }
++    }
++
++    struct user_info user;
++    user.name = name;
++    user.surname = surname;
++    user.age = age;
++    user.phone = phone;
++    user.mail = mail;
++
++    res = add_user_impl(&user);
++    if (res < 0) {
++        pr_err("failed to insert user\n");
++        return -1;
++    }
++
++    pr_info("added successfully\n");
++
++    return 0;
++}
++
++int do_del(const char* args) {
++    pr_info("doing del\n");
++
++    char surname[SURNAME_BUF_SIZE];
++    int res = sscanf(args, "%s", surname);
++    if (res < 0) {
++        pr_err("failed to read input\n");
++        return res;
++    }
++    if (res != 1) {
++        pr_err("failed to match input, expected surname\n");
++        return -1;
++    }
++
++    res = del_user_impl(surname);
++    if (res < 0) {
++        pr_info("failed to delete user");
++        return res;
++    }
++
++    pr_info("successfully deleted\n");
++    return 0;
++}
++
++int do_get(const char* args) {
++    pr_info("doing get\n");
++
++    char surname[SURNAME_BUF_SIZE];
++    int res = sscanf(args, "%s", surname);
++    if (res < 0) {
++        pr_err("failed to read input\n");
++        return res;
++    }
++    if (res != 1) {
++        pr_err("failed to match input, expected surname\n");
++        return -1;
++    }
++
++    struct user_info user;
++    user.name = kmalloc(NAME_BUF_SIZE, GFP_KERNEL);
++    user.surname = kmalloc(SURNAME_BUF_SIZE, GFP_KERNEL);
++    user.phone = kmalloc(PHONE_BUF_SIZE, GFP_KERNEL);
++    user.mail = kmalloc(MAIL_BUF_SIZE, GFP_KERNEL);
++    res = free_user_info_if_bad_field(&user);
++    if (res == 1) {
++        return -ENOMEM;
++    } 
++
++    res = get_user_impl(surname, &user);
++    if (res < 0) {
++        free_user_info(&user);
++        pr_err("failed to get user\n");
++        return res;
++    }
++
++    sprintf(answer, "%s %s %d %s %s", user.name, user.surname, user.age, user.phone, user.mail);
++    free_user_info(&user);
++
++    pr_info("successfully got user\n");
++    return 0;
++}
++
++static ssize_t dict_write(struct file* f, const char __user* u, size_t count, loff_t* offset) {
++    pr_info("starting to write\n");
++
++    char buf [INPUT_BUF_SIZE];
++    int res = copy_from_user(buf, u, count);
++    if (res) {
++        pr_err("failed to read input\n");
++        return -EFAULT;
++    }
++
++    char command[COMMAND_BUF_SIZE];
++    res = sscanf(buf, "%s", command);
++    if (res < 0) {
++        pr_err("failed to read input\n");
++        return res;
++    }
++    if (res != 1) {
++        pr_err("failed to match input, expected command\n");
++        return -1;
++    }
++
++    const char* args = u + strlen(command) + 1;
++
++    if (strcmp(command, "add") == 0) {
++        res = do_add(args);
++        if (res < 0) {
++            return res;
++        }
++    } else if (strcmp(command, "del") == 0) {
++        res = do_del(args);
++        if (res < 0) {
++            return res;
++        }
++    } else if (strcmp(command, "get") == 0) {
++        res = do_get(args);
++        if (res < 0) {
++            return res;
++        }
++    } else {
++        pr_err("unkown command \n");
++        return -1;
++    }
++
++    *offset += count;
++    return count;
++}
++
++static int dict_open(struct inode* i, struct file* f) {
++    return 0;
++}
++
++static int dict_release(struct inode* i, struct file* f) {
++    return 0;
++}
++
++static long dict_ioctl(struct file* f, unsigned int cmd, unsigned long arg) {
++    return 0;
++}
++
++static struct file_operations fops = {
++    .owner = THIS_MODULE,
++    .read = dict_read,
++    .write = dict_write,
++    .open = dict_open,
++    .release = dict_release,
++    .unlocked_ioctl = dict_ioctl
++};
++
++static int __init dict_init(void) {
++    pr_info("starting dict module\n");
++
++    int err;
++    dev_t dev;
++    err = alloc_chrdev_region(&dev, 0, 1, "dict");
++    if (err < 0) {
++        pr_err("dict failed to allocate device\n");
++        return err;
++    }
++    major = MAJOR(dev);
++
++    dict_class = class_create("dict");
++    if (IS_ERR(dict_class)) {
++        unregister_chrdev_region(dev, 1);
++        pr_err("dict failed to create class\n");
++        return PTR_ERR(dict_class);
++    }
++
++    cdev_init(&dict_data, &fops);
++    dict_data.owner = THIS_MODULE;
++
++    err = cdev_add(&dict_data, dev, 1);
++    if (err < 0) {
++        unregister_chrdev_region(dev, 1);
++        class_destroy(dict_class);
++        pr_err("dict failed to add device\n");
++        return err;
++    }
++
++    dict_device = device_create(dict_class, NULL, dev, NULL, "dict");
++    if (IS_ERR(dict_device)) {
++        unregister_chrdev_region(dev, 1);
++        class_destroy(dict_class);
++        pr_err("dict failed to create device\n");
++        return PTR_ERR(dict_class);
++    }
++
++    hash_init(users_map);
++
++    pr_info("successfully started dict module, registered device %d\n", major);
++    return 0;
++}
++
++static void __exit dict_exit(void) {
++    pr_info("exiting dict module\n");
++
++    int dev = MKDEV(major, 0);
++    device_destroy(dict_class, dev);
++    class_destroy(dict_class);
++    unregister_chrdev_region(dev, 1);
++
++    pr_info("successfully exited dict module\n");
++}
++
++module_init(dict_init);
++module_exit(dict_exit);
+\ No newline at end of file
+diff --git a/linux-6.14.6/dict_module/dict_mod.h b/linux-6.14.6/dict_module/dict_mod.h
+new file mode 100644
+index 0000000..fee22de
+--- /dev/null
++++ b/linux-6.14.6/dict_module/dict_mod.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++int do_add(const char* args);
++
++int do_del(const char* args);
++
++int do_get(const char* args);
+\ No newline at end of file
+diff --git a/linux-6.14.6/dict_module/dict_syscalls.c b/linux-6.14.6/dict_module/dict_syscalls.c
+new file mode 100644
+index 0000000..bbb11b3
+--- /dev/null
++++ b/linux-6.14.6/dict_module/dict_syscalls.c
+@@ -0,0 +1,16 @@
++#include "dict.h"
++
++#include <linux/kernel.h>
++#include <linux/syscalls.h>
++
++SYSCALL_DEFINE1(add_user, const struct user_info __user*, user) {
++    return add_user_impl(user);
++}
++
++SYSCALL_DEFINE1(del_user, const char __user*, surname) {
++    return del_user_impl(surname);
++}
++
++SYSCALL_DEFINE2(get_user, const char __user*, surname, struct user_info __user*, user) {
++    return get_user_impl(surname, user);
++}
+\ No newline at end of file
+diff --git a/linux-6.14.6/include/linux/syscalls.h b/linux-6.14.6/include/linux/syscalls.h
+index c633320..5a0ef6c 100644
+--- a/linux-6.14.6/include/linux/syscalls.h
++++ b/linux-6.14.6/include/linux/syscalls.h
+@@ -1316,4 +1316,9 @@ int __sys_getsockopt(int fd, int level, int optname, char __user *optval,
+ 		int __user *optlen);
+ int __sys_setsockopt(int fd, int level, int optname, char __user *optval,
+ 		int optlen);
++struct user_info;
++asmlinkage long sys_add_user(const struct user_info __user* user);
++asmlinkage long sys_del_user(const char __user* surname);
++asmlinkage long sys_get_user(const char __user* surname, struct user_info* __user user);
++
+ #endif
